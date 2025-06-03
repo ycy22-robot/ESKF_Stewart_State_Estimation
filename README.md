@@ -1,1 +1,1 @@
-The code will be available soon.
+The ditailed introduction will be available soon.
