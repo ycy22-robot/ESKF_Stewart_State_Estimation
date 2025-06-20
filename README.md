@@ -55,4 +55,4 @@ If you have any questions, please contact [yuecy22@mails.tsinghua.edu.cn](mailto
 - **Q: How can I customize the simulation trajectory or noise parameters?**
    A: Edit the relevant settings in `generate_robot_sensor_dataset.m`.
 - **Q: What if I encounter errors when running the code?**
-   A: Ensure your MATLAB version and toolboxes meet the requirements. For persistent issues, please contact the author.
+   A: The code was developed and tested with MATLAB R2023B, and does not require any special toolboxes. If you have any issues, please feel free to contact the author.
