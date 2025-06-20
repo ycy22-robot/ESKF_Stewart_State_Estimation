@@ -1,23 +1,24 @@
-function estimated_states = run_EBFK_SG_Filter(rod_data)
-% RUN_EBFK_ONLINE 利用正运动学计算Stewart平台末端状态及运动量
-%                 采用在线(因果)差分+二阶巴特沃斯滤波器估计速度、加速度和角速率
+function estimated_states = run_fk(rod_data)
+% RUN_FK Calculates Stewart platform end-effector states and derivatives using forward kinematics.
+%        Uses causal (online) differentiation and 2nd-order Butterworth filter to estimate velocity,
+%        acceleration, and angular velocity.
 %
-% 输入:
-%   rod_data: n_samples×7矩阵，每行格式为
+% Inputs:
+%   rod_data: n_samples×7 matrix, each row in the format:
 %             [timestamp, L1, L2, L3, L4, L5, L6]
-% 输出:
-%   estimated_states: 结构体，包含以下字段：
-%      timestamp        - 时间戳 (Nx1)
-%      position         - 位置 (Nx3) - 来自 FwKine (m)
-%      velocity         - 速度 (Nx3) - 在线差分+Butterworth滤波 (m/s)
-%      acceleration     - 加速度 (Nx3) - 在线差分+Butterworth滤波 (m/s^2)
-%      euler            - RPY欧拉角 (Nx3)，单位：度 - 来自 FwKine
-%      orientation      - 旋转矩阵（cell数组，每个元素是 3×3矩阵）
-%      angular_velocity - 角速度 (Nx3)，单位：度/秒 - 在线差分+Butterworth滤波
+% Output:
+%   estimated_states: struct with the following fields:
+%      timestamp        - Timestamps (Nx1)
+%      position         - Position (Nx3) - from FwKine (m)
+%      velocity         - Velocity (Nx3) - causal diff + Butterworth filtered (m/s)
+%      acceleration     - Acceleration (Nx3) - causal diff + Butterworth filtered (m/s^2)
+%      euler            - RPY Euler angles (Nx3), in degrees - from FwKine
+%      orientation      - Rotation matrices (cell array, each is 3×3)
+%      angular_velocity - Angular velocity (Nx3), in deg/s - causal diff + Butterworth filtered
 %
-%   依赖: Signal Processing Toolbox (for butter, filter)
-%         FwKineQ function
-%         eul2rotm_custom function
+% Dependencies: Signal Processing Toolbox (for butter, filter)
+%               FwKineQ function
+%               eul2rotm_custom function
 
 % --- Input Validation ---
 if ~exist('butter', 'file') || ~exist('filter', 'file')
@@ -30,43 +31,9 @@ if size(rod_data, 1) < 2 % Need at least 2 points for backward difference
     error('Need at least 2 data samples for calculations.');
 end
 
-% % --- Filter Parameters ---
-% cutoff_freq = 18; % Cutoff frequency in Hz
-% filter_order = 3; % Filter order (second-order Butterworth)
-% 
-% % --- Calculate Sampling Frequency ---
-% timestamp = rod_data(:,1);
-% dt_vec = diff(timestamp);
-% if any(dt_vec <= 1e-9) % Check for non-positive or very small dt
-%    warning('Non-increasing or very small timestamps detected. Using mean of positive differences for sampling frequency.');
-%    positive_dt = dt_vec(dt_vec > 1e-9);
-%    if isempty(positive_dt)
-%        error('Cannot determine a valid sampling interval from timestamps.');
-%    end
-%    dt_mean = mean(positive_dt);
-% else
-%     dt_mean = mean(dt_vec);
-% end
-% fs = 1 / dt_mean; % Average sampling frequency in Hz
-% fprintf('Estimated sampling frequency: %.2f Hz\n', fs);
-% 
-% % Check if cutoff frequency is valid
-% if cutoff_freq >= fs / 2
-%     warning('Cutoff frequency (%.1f Hz) is close to or exceeds Nyquist frequency (%.1f Hz). Filter performance may be affected or invalid. Consider adjusting cutoff_freq.', cutoff_freq, fs/2);
-%     % Clamp cutoff if necessary, or error out depending on requirements
-%     cutoff_freq = 0.98 * fs / 2; % Example: Clamp slightly below Nyquist
-%     fprintf('Adjusted cutoff frequency to %.1f Hz\n', cutoff_freq);
-%     % Or uncomment below to error out:
-%     % error('Cutoff frequency (%.1f Hz) must be less than the Nyquist frequency (%.1f Hz).', cutoff_freq, fs/2);
-% end
-% 
-% % --- Design Butterworth Filter (Low-pass) ---
-% % We will apply this filter AFTER differentiation
-% [b_lp, a_lp] = butter(filter_order, cutoff_freq / (fs / 2), 'low');
-% fprintf('Designed %d-order Butterworth low-pass filter with %.1f Hz cutoff for causal filtering.\n', filter_order, cutoff_freq);
 % --- Filter Parameters ---
-original_cutoff_freq = 18; % 原始截止频率 (Hz)
-filter_order = 3; % 巴特沃斯滤波器阶数
+original_cutoff_freq = 18; % Original cutoff frequency (Hz)
+filter_order = 3; % Butterworth filter order
 
 % --- Calculate Sampling Frequency ---
 timestamp = rod_data(:,1);
@@ -81,24 +48,25 @@ if any(dt_vec <= 1e-9)
 else
     dt_mean = mean(dt_vec);
 end
-fs = 1 / dt_mean; % 平均采样频率 (Hz)
+fs = 1 / dt_mean; % Average sampling frequency (Hz)
 nyquist = fs / 2;
 fprintf('Estimated sampling frequency: %.2f Hz, Nyquist frequency: %.2f Hz\n', fs, nyquist);
 
-% --- 动态调整截止频率 ---
-% 截止频率不能大于Nyquist，且建议远小于
+% --- Dynamically Adjust Cutoff Frequency ---
+% Cutoff should not exceed Nyquist, and is recommended to be well below it
 adjusted_cutoff_freq = min(original_cutoff_freq, 0.45 * nyquist);
 if adjusted_cutoff_freq < original_cutoff_freq
-    warning('采样频率较低，截止频率已由 %.2f Hz 调整为 %.2f Hz (不超过Nyquist的0.45倍)', ...
+    warning('Sampling frequency is low, cutoff freq adjusted from %.2f Hz to %.2f Hz (not exceeding 0.45x Nyquist)', ...
             original_cutoff_freq, adjusted_cutoff_freq);
 end
 cutoff_freq = adjusted_cutoff_freq;
 
-% --- 设计Butterworth低通滤波器 ---
+% --- Design Butterworth Low-pass Filter ---
 [b_lp, a_lp] = butter(filter_order, cutoff_freq / nyquist, 'low');
 fprintf('Designed %d-order Butterworth low-pass filter with cutoff %.2f Hz (fs = %.2f Hz).\n', ...
          filter_order, cutoff_freq, fs);
-% 获取样本数
+
+% Number of samples
 n_samples = size(rod_data, 1);
 
 % --- Pre-allocate Output Variables ---
@@ -149,7 +117,7 @@ for i = 1:n_samples
     if i > 1
         dt = timestamp(i) - timestamp_prev;
         if dt <= 1e-9 % Avoid division by zero or instability with tiny dt
-            warning('run_EBFK_online:TimeStepIssue', 'Time step is zero or negative at index %d. Using previous values.', i);
+            warning('run_FK:TimeStepIssue', 'Time step is zero or negative at index %d. Using previous values.', i);
             velocity(i,:) = velocity(i-1,:);
             euler_rate(i,:) = euler_rate(i-1,:);
             acceleration(i,:) = acceleration(i-1,:);
@@ -206,7 +174,7 @@ estimated_states.euler     = rad2deg(euler); % Original Euler angles (degrees)
 estimated_states.orientation = orientation;  % Rotation matrices
 estimated_states.angular_velocity = rad2deg(angular_velocity); % Filtered angular velocity (degrees/s)
 
-disp('run_EBFK_online finished.');
+disp('run_FK finished.');
 
 end
 

@@ -199,9 +199,16 @@ xlabel('Time (s)'); ylabel('Rod Length (m)');
 legend('Original L4', 'Original L5', 'Original L6', 'Noisy L4', 'Noisy L5', 'Noisy L6');
 grid on;
 
-%% Prepare data for algorithms
+%% Prepare data for algorithms (By default: without spike data)
 imu_data = [imu_timestamps, imu_gyr, imu_acc];
 rod_data = [rod_timestamps, L_measured];
+
+% --------- If you want to use spike data, uncomment and run the following code ---------
+% imu_gyr = deg2rad(imu_data_with_noise(:,5:7));
+% imu_acc = imu_data_with_noise(:,2:4);
+% L_measured = rod_data_with_noise(:, 2:7);
+% imu_data = [imu_timestamps, imu_gyr, imu_acc];
+% rod_data = [rod_timestamps, L_measured];
 
 %% Run ESKF (Rod observation)
 options_ESKF = struct(); 
